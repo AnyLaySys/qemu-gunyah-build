@@ -87,6 +87,8 @@ cmake --install .
 cd "$SrcDir"
 fetch "https://download.gnome.org/sources/glib/${GlibVer%.*}/glib-${GlibVer}.tar.xz" "glib-${GlibVer}.tar.xz"
 [ -d "glib-${GlibVer}" ] || tar xf "glib-${GlibVer}.tar.xz"
+perl -0pi -e "s/\\n  'lchmod',//" "glib-${GlibVer}/meson.build"
+perl -0pi -e "s/if cc\\.has_header_symbol\\('pthread\\.h', 'pthread_getaffinity_np', prefix : pthread_prefix\\)/if false and cc.has_header_symbol('pthread.h', 'pthread_getaffinity_np', prefix : pthread_prefix)/" "glib-${GlibVer}/meson.build"
 MesonCross="$OutDir/glib.cross"
 cat > "$MesonCross" <<EOF
 [binaries]
