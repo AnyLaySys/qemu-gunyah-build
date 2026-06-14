@@ -28,9 +28,9 @@ jobs:
     - name: 拉取
       run: |
         git clone --recurse-submodules https://github.com/AnyLaySys/qemu-gunyah.git build/src/qemu-gunyah-main
-        mkdir -p build/src/qemu-geniezone-main/pyvenv
+        mkdir -p build/src/qemu-gunyah-main/pyvenv
         wget https://raw.githubusercontent.com/qemu/qemu/master/pyvenv/meson.build -O build/src/qemu-gunyah-main/pyvenv/meson.build
-        mkdir -p build/src/qemu-geniezone-main/subprojects/packagefiles/berkeley-softfloat-3 build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-testfloat-3
+        mkdir -p build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-softfloat-3 build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-testfloat-3
         wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson.build -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-softfloat-3/meson.build
         wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt
         wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson.build -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-testfloat-3/meson.build
