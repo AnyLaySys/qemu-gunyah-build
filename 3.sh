@@ -168,51 +168,41 @@ if [ ! -f "$prefix/lib/libucontext.a" ]; then
   mkdir -p "$prefix/lib" "$prefix/lib/pkgconfig" "$prefix/include/libucontext"
   cp -f libucontext.a "$prefix/lib/"
   # 手动创建 libucontext.pc（原源码不提供）
-  cat > "$prefix/lib/pkgconfig/libucontext.pc" <<EOF
-prefix=$prefix
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: libucontext
-Description: ucontext implementation for systems that lack it
-Version: 1.2
-Requires:
-Libs: -L\${libdir} -lucontext
-Cflags: -I\${includedir}
-EOF
+  printf '%s\n' \
+    "prefix=$prefix" \
+    "exec_prefix=\${prefix}" \
+    "libdir=\${exec_prefix}/lib" \
+    "includedir=\${prefix}/include" \
+    "" \
+    "Name: libucontext" \
+    "Description: ucontext implementation for systems that lack it" \
+    "Version: 1.2" \
+    "Requires:" \
+    "Libs: -L\${libdir} -lucontext" \
+    "Cflags: -I\${includedir}" > "$prefix/lib/pkgconfig/libucontext.pc"
   cp -f include/libucontext/libucontext.h "$prefix/include/libucontext/"
   popd
-  cat > "$prefix/include/ucontext.h" <<'EOF'
-#ifndef _ANDROID_UCONTEXT_SHIM_H
-#define _ANDROID_UCONTEXT_SHIM_H
-#include <libucontext/libucontext.h>
-#endif
-EOF
+  printf '%s\n' \
+    "#ifndef _ANDROID_UCONTEXT_SHIM_H" \
+    "#define _ANDROID_UCONTEXT_SHIM_H" \
+    "#include <libucontext/libucontext.h>" \
+    "#endif" > "$prefix/include/ucontext.h"
 fi
 
 if [ ! -f "$bitsInstalled" ]; then
   mkdir -p "$prefix/include/libucontext"
-  cat > "$bitsInstalled" <<'EOF'
-#ifndef LIBUCONTEXT_BITS_H
-#define LIBUCONTEXT_BITS_H
-#include <stddef.h>
-typedef struct sigcontext {
-	unsigned long long fault_address;
-	unsigned long long regs[31];
-	unsigned long long sp;
-	unsigned long long pc;
-	unsigned long long pstate;
-	unsigned char __reserved[4096] __attribute__((__aligned__(16)));
-} mcontext_t;
-typedef struct {
-	void *ss_sp;
-	int ss_flags;
-	size_t ss_size;
-} libucontext_stack_t;
-typedef struct libucontext_ucontext {
-	unsigned long uc_flags;
-	struct libucontext_ucontext *uc_link;
-	libucontext_stack_t uc_stack;
-	unsigned char __pad[128];
-	mcontex
+  printf '%s\n' \
+    "#ifndef LIBUCONTEXT_BITS_H" \
+    "#define LIBUCONTEXT_BITS_H" \
+    "#include <stddef.h>" \
+    "typedef struct sigcontext {" \
+    "	unsigned long long fault_address;" \
+    "	unsigned long long regs[31];" \
+    "	unsigned long long sp;" \
+    "	unsigned long long pc;" \
+    "	unsigned long long pstate;" \
+    "	unsigned char __reserved[4096] __attribute__((__aligned__(16)));" \
+    "} mcontext_t;" \
+    "typedef struct {" \
+    "	void *ss_sp;" \
+    "	int ss_fla
