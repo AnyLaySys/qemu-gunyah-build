@@ -1,0 +1,75 @@
+name: Qemu-gunyah release
+run-name: Qemu-gunyah release
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+env:
+  apiLevel: 35
+  ndkPath: "$HOME/android-ndk-r30-beta1"
+  toolchain: "$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 部署
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential ninja-build pkg-config xz-utils device-tree-compiler
+        sudo pip3 install --upgrade meson
+        wget https://dl.google.com/android/repository/android-ndk-r30-beta1-linux.zip -O ndk.zip
+        unzip -q ndk.zip -d $HOME
+        wget https://raw.githubusercontent.com/AnyLaySys/qemu-gunyah-build/main/1.sh
+        chmod +x ./1.sh
+        ./1.sh
+      
+    - name: 拉取
+      run: |
+        git clone --recurse-submodules https://github.com/AnyLaySys/qemu-gunyah.git build/src/qemu-gunyah-main
+        mkdir -p build/src/qemu-gunyah-main/pyvenv
+        wget https://raw.githubusercontent.com/qemu/qemu/master/pyvenv/meson.build -O build/src/qemu-gunyah-main/pyvenv/meson.build
+        mkdir -p build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-softfloat-3 build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-testfloat-3
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson.build -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-softfloat-3/meson.build
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson.build -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-testfloat-3/meson.build
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson_options.txt -O build/src/qemu-gunyah-main/subprojects/packagefiles/berkeley-testfloat-3/meson_options.txt
+    
+    - name: 编译
+      run: |
+        set -e
+        srcDir="$GITHUB_WORKSPACE/build/src/qemu-gunyah-main"
+        sysrootDir="$GITHUB_WORKSPACE/build/sysroot"
+        toolchain="$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
+        cd "$srcDir"
+        export CC="$toolchain/bin/aarch64-linux-android$apiLevel-clang"
+        export CXX="$toolchain/bin/aarch64-linux-android$apiLevel-clang++"
+        env PATH="$toolchain/bin:$sysrootDir/bin:$PATH" PKG_CONFIG=/usr/bin/pkg-config PKG_CONFIG_LIBDIR="$sysrootDir/lib/pkgconfig" PKG_CONFIG_PATH="$sysrootDir/lib/pkgconfig" LDFLAGS="-L$sysrootDir/lib -Wl,-rpath-link,$sysrootDir/lib" AR="$toolchain/bin/llvm-ar" NM="$toolchain/bin/llvm-nm" OBJCOPY="$toolchain/bin/llvm-objcopy" RANLIB="$toolchain/bin/llvm-ranlib" STRIP="$toolchain/bin/llvm-strip" ./configure --cpu=aarch64 --cross-prefix=aarch64-linux-android- --target-list=aarch64-softmmu --enable-gunyah --enable-tcg --with-coroutine=sigaltstack --extra-cflags="-I$sysrootDir/include -I$srcDir/linux-headers" --disable-dbus-display --disable-docs --disable-gio --disable-hvf --disable-kvm --disable-multiprocess --disable-nitro --disable-opengl --disable-tools --disable-guest-agent --disable-usb-redir --disable-virtfs --disable-vduse-blk-export --disable-libvduse --disable-vhost-crypto --disable-vhost-kernel --disable-vhost-net --disable-vhost-user --disable-vhost-user-blk-server --disable-vhost-vdpa --disable-virglrenderer --disable-werror --disable-qemu-vnc --disable-tpm --disable-install-blobs
+        ninja -C build -j$(nproc) qemu-system-aarch64
+
+
+    
+    - name: Zip the Build
+      run: zip -r ${{ secrets.ReleaseZipName }} .
+
+    - name: 上传
+      uses: actions/upload-artifact@v7
+      with:
+        name: qemu-gunyah
+        path: ${{ secrets.ReleaseZipName }}
+        archive: false
+        if-no-files-found: error
+      
+    - name: Create Release and Upload Release Asset
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref }}
+        body: TODO New Release.
+        draft: false
+        prerelease: false
+        files: |
+          ${{ secrets.ReleaseZipName }}.zip
+          LICENSE 
