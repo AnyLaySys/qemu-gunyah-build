@@ -5,6 +5,10 @@ on: workflow_dispatch
     # Sequence of patterns matched against refs/tags
 #    tags:
 #      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+env:
+  apiLevel: 35
+  ndkPath: "$HOME/android-ndk-r30-beta1"
+  toolchain: "$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
 
 jobs:
   build:
@@ -15,6 +19,14 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v2
 
+    - name: 部署
+      run: 
+        sudo apt update
+        sudo apt install -y build-essential ninja-build pkg-config xz-utils device-tree-compiler
+        sudo pip3 install --upgrade meson
+        wget https://dl.google.com/android/repository/android-ndk-r30-beta1-linux.zip -O ndk.zip
+        unzip -q ndk.zip -d $HOME
+        
     - name: apt update
       run: sudo apt update
         
@@ -26,6 +38,14 @@ jobs:
       
     - name: Zip the Build
       run: zip -r ${{ secrets.ReleaseZipName }} .
+
+    - name: 上传
+      uses: actions/upload-artifact@v7
+      with:
+        name: qemu-gzvm
+        path: qemu-gzvm.xz
+        archive: false
+        if-no-files-found: error
       
     - name: Create Release and Upload Release Asset
       uses: softprops/action-gh-release@v1
