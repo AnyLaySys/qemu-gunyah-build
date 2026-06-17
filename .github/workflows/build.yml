@@ -63,5 +63,5 @@ jobs:
       with:
         name: qemu-gunyah
         path: $GITHUB_WORKSPACE/qemu-gunyah
-        archive: false
+        archive: true
         if-no-files-found: error
