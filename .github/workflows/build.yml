@@ -9,6 +9,7 @@ env:
   apiLevel: 36
   ndkPath: "$HOME/android-ndk-r30-beta1"
   toolchain: "$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
+  SOURCE_DIR: "$GITHUB_WORKSPACE/build/src/qemu-gzvm-main"
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,18 +26,18 @@ jobs:
         ./1.sh
     - name: 拉取
       run: |
-        git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs $(nproc) https://github.com/AnyLaySys/qemu-gunyah.git build/src/qemu-gzvm-main
+        git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs $(nproc) https://github.com/AnyLaySys/qemu-gunyah.git $SOURCE_DIR
         mkdir -p build/src/qemu-gzvm-main/pyvenv
-        wget https://raw.githubusercontent.com/qemu/qemu/master/pyvenv/meson.build -O build/src/qemu-gzvm-main/pyvenv/meson.build
-        mkdir -p build/src/qemu-gzvm-main/subprojects/packagefiles/berkeley-softfloat-3 build/src/qemu-gzvm-main/subprojects/packagefiles/berkeley-testfloat-3
-        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson.build -O build/src/qemu-gzvm-main/subprojects/packagefiles/berkeley-softfloat-3/meson.build
-        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt -O build/src/qemu-gzvm-main/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt
-        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson.build -O build/src/qemu-gzvm-main/subprojects/packagefiles/berkeley-testfloat-3/meson.build
-        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson_options.txt -O build/src/qemu-gzvm-main/subprojects/packagefiles/berkeley-testfloat-3/meson_options.txt
+        wget https://raw.githubusercontent.com/qemu/qemu/master/pyvenv/meson.build -O $SOURCE_DIR/pyvenv/meson.build
+        mkdir -p $SOURCE_DIR/subprojects/packagefiles/berkeley-softfloat-3 $SOURCE_DIR/subprojects/packagefiles/berkeley-testfloat-3
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson.build -O $SOURCE_DIR/subprojects/packagefiles/berkeley-softfloat-3/meson.build
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt -O $SOURCE_DIR/subprojects/packagefiles/berkeley-softfloat-3/meson_options.txt
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson.build -O $SOURCE_DIR/subprojects/packagefiles/berkeley-testfloat-3/meson.build
+        wget https://raw.githubusercontent.com/qemu/qemu/master/subprojects/packagefiles/berkeley-testfloat-3/meson_options.txt -O $SOURCE_DIR/subprojects/packagefiles/berkeley-testfloat-3/meson_options.txt
     - name: 编译
       run: |
         set -e
-        srcDir="$GITHUB_WORKSPACE/build/src/qemu-gzvm-main"
+        srcDir="$GITHUB_WORKSPACE/$SOURCE_DIR"
         sysrootDir="$GITHUB_WORKSPACE/build/sysroot"
         toolchain="$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
         cd "$srcDir"
@@ -47,20 +48,20 @@ jobs:
     - name: 打包
       run: |
         set -e
-        srcDir="$GITHUB_WORKSPACE/build/src/qemu-gzvm-main"
+        srcDir="$GITHUB_WORKSPACE/$SOURCE_DIR"
         sysrootDir="$GITHUB_WORKSPACE/build/sysroot"
-        qvmDir="$GITHUB_WORKSPACE/qemu-gzvm"
+        qvmDir="$GITHUB_WORKSPACE/qemu-gunyah"
         toolchain="$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
         mkdir -p "$qvmDir"
         cp -L -t "$qvmDir" "$srcDir/build/qemu-system-aarch64" "$sysrootDir/lib/libpixman-1.so" "$sysrootDir/lib/libusb-1.0.so" "$sysrootDir/lib/libglib-2.0.so.0" "$sysrootDir/lib/libgmodule-2.0.so.0" "$sysrootDir/lib/libintl.so.8" "$sysrootDir/lib/libpcre2-8.so" "$toolchain/sysroot/usr/lib/aarch64-linux-android/$apiLevel/libz.so"
         install -D "$srcDir/pc-bios/keymaps/en-us" "$qvmDir/pc-bios/keymaps/en-us"
         install -D "$srcDir/pc-bios/efi-virtio.rom" "$qvmDir/pc-bios/efi-virtio.rom"
         "$toolchain/bin/llvm-strip" --strip-all "$qvmDir/qemu-system-aarch64" "$qvmDir"/*.so
-        tar --numeric-owner -c qemu-gzvm | xz > qemu-gzvm.xz
+        tar --numeric-owner -c qemu-gunyah | xz > qemu-gunyah.xz
     - name: 上传
       uses: actions/upload-artifact@v7
       with:
-        name: qemu-gzvm
-        path: qemu-gzvm.xz
+        name: qemu-gunayh
+        path: qemu-gunayh.xz
         archive: false
-        if-no-files-found: error
+        if-no-files-found: error$SOURCE_DIR
