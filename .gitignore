@@ -1,3 +1,3 @@
-*.xz
-/build
-/qemu-gunyah
+/.idea/
+/build/
+/qemu-gunyah/
