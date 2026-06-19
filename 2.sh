@@ -90,6 +90,24 @@ copyLib() {
     pendingElfs+=("$destPath")
   fi
 }
+x11Tmp() {
+  local file
+  for file in "$@"; do
+    [ -f "$file" ] || continue
+    perl -0pi -e '
+      sub fit { $_[1] . "\0" x (length($_[0]) - length($_[1])) }
+      for $p (
+        ["/data/data/com.termux/files/usr/tmp/.X11-unix/X", "/data/local/tmp/als/x11/tmp/.X11-unix/X"],
+        ["/data/data/com.termux/files/usr/tmp/.XIM-unix/XIM", "/data/local/tmp/als/x11/tmp/.XIM-unix/XIM"],
+      ) {
+        s/\Q$p->[0]\E/fit($p->[0], $p->[1])/eg;
+      }
+      for $s (".X11-unix/X", ".XIM-unix/XIM") {
+        s{\Q/data/local/tmp/als/x11/tmp\E/+(\Q$s\E)}{fit($&, "/data/local/tmp/als/x11/tmp/$1")}eg;
+      }
+    ' "$file"
+  done
+}
 fetchDeb() {
   local debName
   local packageName=$1
@@ -225,8 +243,10 @@ if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" 
     [ -d "$d/lib" ] && cp -rf "$d/lib/"* "$prefix/lib/"
   done
   find "$prefix/lib/pkgconfig" -name "*.pc" -type f -exec sed -i "s|/data/data/com.termux/files/usr|$prefix|g" {} +
+  x11Tmp "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
   popd && rm -rf "$buildDir/x11_tmp"
 fi
+x11Tmp "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
 if [ ! -d "$sdlSrc" ]; then
   git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git "$sdlSrc"
 fi
@@ -305,6 +325,7 @@ mkdir -p "$qvmLib"
 [ -f "$sysBin/qemu-img" ] && $strip --strip-all "$sysBin/qemu-img" -o "$qvmDir/qemu-img"
 patchelf --set-rpath '$ORIGIN/lib' "$qvmDir/qemu-system-aarch64" "$qvmDir/qemu-img" || true
 collectLib "$qvmDir/qemu-system-aarch64" "$qvmDir/qemu-img"
+x11Tmp "$qvmLib/libxcb.so" "$qvmLib/libX11.so"
 if [ -d "$fwSrc" ]; then
   mkdir -p "$qvmFw/keymaps"
   [ -f "$fwSrc/efi-virtio.rom" ] && cp -a "$fwSrc/efi-virtio.rom" "$qvmFw/"
