@@ -5,27 +5,19 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
-env:
-  ndkPath: "$HOME/android-ndk-r30-beta1"
-  toolchain: "$HOME/android-ndk-r30-beta1/toolchains/llvm/prebuilt/linux-x86_64"
-  qvmDir: "$GITHUB_WORKSPACE/qemu-gunyah"
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - name: 部署
       run: |
-        sudo apt update
         sudo apt install --no-install-recommends -y build-essential device-tree-compiler ninja-build pkg-config unzip wget xz-utils
         sudo pip3 install --upgrade meson
         wget https://dl.google.com/android/repository/android-ndk-r30-beta1-linux.zip -O ndk.zip
         unzip -q ndk.zip -d $HOME
         wget https://raw.githubusercontent.com/AnyLaySys/qemu-gunyah-build/main/1.sh
-        chmod +x ./1.sh
-        ./1.sh
-    - name: 编译
-      run: |
-        ./2.sh
+        chmod +x ./1.sh /2.sh
+        ./1.sh && ./2.sh
     - name: 上传
       uses: actions/upload-artifact@v7
       with:
