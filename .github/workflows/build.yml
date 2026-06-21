@@ -5,27 +5,24 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: 检出代码
-      uses: actions/checkout@v7
-
-    - name: 部署
+    - name: 部署与构建
       run: |
         sudo apt install --no-install-recommends -y build-essential ninja-build pkg-config unzip wget xz-utils
         sudo pip3 install --upgrade meson
         wget https://dl.google.com/android/repository/android-ndk-r30-beta1-linux.zip -O ndk.zip
         unzip -q ndk.zip -d $HOME
+        git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs $(nproc) https://github.com/AnyLaySys/qemu-gunyah-build
+        cd qemu-gunyah-build
         chmod +x ./1.sh ./2.sh
         ./1.sh && ./2.sh
-
     - name: 上传
       uses: actions/upload-artifact@v7
       with:
         name: qemu-gunyah
-        path: qemu-gunyah
+        path: qemu-gunyah-build/qemu-gunyah
         archive: true
         if-no-files-found: error

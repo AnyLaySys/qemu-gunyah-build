@@ -1,32 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 apiLevel="36"
-baseUrl="https://packages.termux.dev/apt/termux-main/pool/main"
 buildDir="$(pwd)/build"
+bitsInstalled="$buildDir/sysroot/include/libucontext/bits.h"
+fwSrc="$buildDir/sysroot/share/qemu"
+gitClone="git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs $(nproc)"
 hostOs=$(uname -s | tr '[:upper:]' '[:lower:]')
 libucontextGitUrl="https://github.com/kaniini/libucontext.git"
+libucontextH="$buildDir/sysroot/include/libucontext/libucontext.h"
+libucontextSrc="$buildDir/libucontext"
 nCpu="$(nproc || sysctl -n hw.ncpu)"
 ndkPath="$HOME/android-ndk-r30-beta1"
-qvmDir="qemu-gunyah"
-qvmGitUrl="https://github.com/AnyLaySys/qemu-gunyah.git"
-targetTriple=aarch64-linux-android
 outDir="$buildDir/out/qemu"
 prefix="$buildDir/sysroot"
-scriptDir="$(cd "$(dirname "$0")" && pwd)"
-srcDir="$buildDir/src"
-bitsInstalled="$prefix/include/libucontext/bits.h"
-fwSrc="$prefix/share/qemu"
-libucontextH="$prefix/include/libucontext/libucontext.h"
-libucontextSrc="$buildDir/libucontext"
+qvmDir="qemu-gunyah"
 qvmFw="$qvmDir/fw"
+qvmGitUrl="https://github.com/AnyLaySys/qemu-gunyah.git"
 qvmLib="$qvmDir/lib"
-qvmSrc="$srcDir/qemu-gunyah-main"
-sdlConfigH="$srcDir/SDL2/include/SDL_config_android.h"
-sdlSrc="$srcDir/SDL2"
-sdlXinput2H="$srcDir/SDL2/src/video/x11/SDL_x11xinput2.h"
+qvmSrc="$buildDir/src/qemu-gunyah-main"
+scriptDir="$(cd "$(dirname "$0")" && pwd)"
+sdlConfigH="$buildDir/src/SDL2/include/SDL_config_android.h"
+sdlSrc="$buildDir/src/SDL2"
+sdlXinput2H="$buildDir/src/SDL2/src/video/x11/SDL_x11xinput2.h"
 slirpPatch="$scriptDir/patch/slirp.patch"
+srcDir="$buildDir/src"
 sysBin="$prefix/bin"
 sysLib="$prefix/lib"
+targetTriple=aarch64-linux-android
+termuxPkg="https://packages.termux.dev/apt/termux-main/pool/main"
 wrapPc="$outDir/android-pkg-config"
 case "$hostOs" in
   darwin) hostTag="darwin-x86_64" ;;
@@ -113,7 +114,7 @@ fetchDeb() {
   local packageName=$1
   local packageUrl
   local subPath=$2
-  packageUrl="${baseUrl}/${subPath}/"
+  packageUrl="${termuxPkg}/${subPath}/"
   debName=$(curl -sL -A "Mozilla/5.0" "$packageUrl" | grep -oE "${packageName}_[^_]+_aarch64[.]deb" | sort -V | tail -n1 || true)
   if [ -z "$debName" ]; then
     debName=$(curl -sL -A "Mozilla/5.0" "$packageUrl" | grep -oE "${packageName}_[^_]+_all[.]deb" | sort -V | tail -n1 || true)
@@ -147,10 +148,10 @@ isSystemLib() {
 }
 neededLibs() { "$readelf" -d "$1" | awk 'index($0, "Shared library: [") { name = $0; sub(/^.*Shared library: [[]/, "", name); sub(/[]].*$/, "", name); print name }'; }
 if [ ! -d "$qvmSrc" ]; then
-  git clone --depth 1 "$qvmGitUrl" "$qvmSrc"
+  $gitClone "$qvmGitUrl" "$qvmSrc"
 fi
 if [ ! -d "$libucontextSrc" ]; then
-  git clone --depth 1 "$libucontextGitUrl" "$libucontextSrc"
+  $gitClone "$libucontextGitUrl" "$libucontextSrc"
 fi
 if [ ! -f "$prefix/lib/libucontext.a" ]; then
   pushd "$libucontextSrc"
@@ -248,7 +249,7 @@ if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" 
 fi
 x11Tmp "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
 if [ ! -d "$sdlSrc" ]; then
-  git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git "$sdlSrc"
+  $gitClone --branch SDL2 https://github.com/libsdl-org/SDL.git "$sdlSrc"
 fi
 if [ -d "$sdlSrc" ]; then
   if git -C "$sdlSrc" rev-parse --is-inside-work-tree; then
@@ -331,4 +332,3 @@ if [ -d "$fwSrc" ]; then
   [ -f "$fwSrc/efi-virtio.rom" ] && cp -a "$fwSrc/efi-virtio.rom" "$qvmFw/"
   [ -f "$fwSrc/keymaps/en-us" ] && cp -a "$fwSrc/keymaps/en-us" "$qvmFw/keymaps/"
 fi
-adb push "$qvmDir" /data/local/tmp/als
