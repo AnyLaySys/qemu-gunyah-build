@@ -156,7 +156,7 @@ fi
 if [ ! -f "$prefix/lib/libucontext.a" ]; then
   pushd "$libucontextSrc"
   make clean || true
-  make ARCH=aarch64 CC="$CC" AR="$AR" RANLIB="$RANLIB" FREESTANDING=yes EXPORT_UNPREFIXED=yes -j "$nCpu" libucontext.a
+  make ARCH=aarch64 CC="$CC" AR="$AR" RANLIB="$RANLIB" FREESTANDING=yes EXPORT_UNPREFIXED=yes -j "$nCpu" libucontext.a libucontext.pc
   mkdir -p "$prefix/lib" "$prefix/lib/pkgconfig" "$prefix/include/libucontext"
   cp -f libucontext.a "$prefix/lib/"
   cp -f libucontext.pc "$prefix/lib/pkgconfig/"
