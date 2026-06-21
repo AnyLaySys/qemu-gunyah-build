@@ -162,27 +162,27 @@ if [ ! -f "$prefix/lib/libucontext.a" ]; then
   cp -f libucontext.pc "$prefix/lib/pkgconfig/"
   cp -f include/libucontext/libucontext.h "$prefix/include/libucontext/"
   popd
-  cat > "$prefix/include/ucontext.h" <<'EOF'
+fi
+mkdir -p "$prefix/include/libucontext"
+cat > "$prefix/include/ucontext.h" <<'EOF'
 #ifndef _ANDROID_UCONTEXT_SHIM_H
 #define _ANDROID_UCONTEXT_SHIM_H
+#include <sys/ucontext.h>
 #include <libucontext/libucontext.h>
 #endif
 EOF
-fi
-if [ ! -f "$bitsInstalled" ]; then
-  mkdir -p "$prefix/include/libucontext"
-  cat > "$bitsInstalled" <<'EOF'
+cat > "$bitsInstalled" <<'EOF'
 #ifndef LIBUCONTEXT_BITS_H
 #define LIBUCONTEXT_BITS_H
 #include <stddef.h>
-typedef struct sigcontext {
+typedef struct {
 	unsigned long long fault_address;
 	unsigned long long regs[31];
 	unsigned long long sp;
 	unsigned long long pc;
 	unsigned long long pstate;
 	unsigned char __reserved[4096] __attribute__((__aligned__(16)));
-} mcontext_t;
+} libucontext_mcontext_t;
 typedef struct {
 	void *ss_sp;
 	int ss_flags;
@@ -192,27 +192,22 @@ typedef struct libucontext_ucontext {
 	unsigned long uc_flags;
 	struct libucontext_ucontext *uc_link;
 	libucontext_stack_t uc_stack;
-	unsigned char __pad[128];
-	mcontext_t uc_mcontext;
+	unsigned char __pad[136];
+	libucontext_mcontext_t uc_mcontext;
 } libucontext_ucontext_t;
 #endif
 EOF
-fi
 if [ -f "$libucontextH" ] && grep -Fq 'void (*)()' "$libucontextH"; then
   perl -0pi -e 's[void [(][*][)][(][)]][void (*)(void)]g' "$libucontextH"
 fi
-if [ ! -d "$outDir" ]; then
-  mkdir -p "$outDir"
-fi
+mkdir -p "$outDir"
 mkdir -p "$prefix/lib" "$prefix/bin"
-if [ ! -f "$wrapPc" ]; then
-  {
-    echo '#!/usr/bin/env bash'
-    echo "export PKG_CONFIG_PATH='$prefix/lib/pkgconfig:$prefix/share/pkgconfig'"
-    echo "export PKG_CONFIG_LIBDIR='$prefix/lib/pkgconfig:$prefix/share/pkgconfig'"
-    echo 'exec pkg-config "$@"'
-  } > "$wrapPc"
-fi
+{
+  echo '#!/usr/bin/env bash'
+  echo "export PKG_CONFIG_PATH='$prefix/lib/pkgconfig:$prefix/share/pkgconfig'"
+  echo "export PKG_CONFIG_LIBDIR='$prefix/lib/pkgconfig:$prefix/share/pkgconfig'"
+  echo 'exec pkg-config "$@"'
+} > "$wrapPc"
 chmod +x "$wrapPc"
 export PKG_CONFIG="$wrapPc"
 if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" ]; then
@@ -288,8 +283,6 @@ if [ -d "$sdlSrc" ]; then
     ' "$sdlSrc/CMakeLists.txt" > "$sdlSrc/CMakeLists.txt.tmp" && mv "$sdlSrc/CMakeLists.txt.tmp" "$sdlSrc/CMakeLists.txt"
   fi
   sed -i 's/set(ANDROID_X11_LIBS X11 Xext xcb Xau Xdmcp Xrender X11-xcb)$/set(ANDROID_X11_LIBS X11 Xext xcb Xau Xdmcp Xrender X11-xcb android-shmem)/' "$sdlSrc/CMakeLists.txt"
-  sed -i 's/set(SDL_X11_DEFAULT OFF)/set(SDL_X11_DEFAULT OFF)/g' "$sdlSrc/CMakeLists.txt"
-  sed -i 's/set(SDL_X11 OFF)/set(SDL_X11 OFF)/g' "$sdlSrc/CMakeLists.txt"
 fi
 rm -rf "$sdlSrc/build-android"
 rm -f "$prefix/lib/libSDL2.so" "$prefix/lib/pkgconfig/sdl2.pc"
