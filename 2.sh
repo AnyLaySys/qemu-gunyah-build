@@ -41,7 +41,7 @@ fi
 toolchain="$ndkPath/toolchains/llvm/prebuilt/$hostTag"
 readelf="$toolchain/bin/llvm-readelf"
 strip="$toolchain/bin/llvm-strip"
-displayOpts=(--disable-gtk -Dgtk=disabled --disable-vnc -Dvnc=disabled --enable-sdl -Dsdl=enabled -Dopengl=disabled)
+displayOpts=(--disable-gtk -Dgtk=disabled --enable-sdl -Dsdl=enabled -Dopengl=disabled)
 export AR="$toolchain/bin/llvm-ar"
 export CC="$toolchain/bin/${targetTriple}${apiLevel}-clang"
 export CFLAGS="-fPIC -Os -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-unwind-tables -fno-asynchronous-unwind-tables -fmerge-all-constants -mbranch-protection=none -ftls-model=global-dynamic -Wno-error -I$prefix/include -DSDL_MAIN_HANDLED -I$prefix/include/pixman-1 -DANDROID_PLATFORM=android-${apiLevel}"
