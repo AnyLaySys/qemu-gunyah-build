@@ -23,7 +23,6 @@ sdlConfigH="$buildDir/src/SDL2/include/SDL_config_android.h"
 sdlSrc="$buildDir/src/SDL2"
 sdlXinput2H="$buildDir/src/SDL2/src/video/x11/SDL_x11xinput2.h"
 slirpPatch="$scriptDir/patch/slirp.patch"
-srcDir="$buildDir/src"
 sysBin="$prefix/bin"
 sysLib="$prefix/lib"
 targetTriple=aarch64-linux-android
@@ -41,7 +40,7 @@ fi
 toolchain="$ndkPath/toolchains/llvm/prebuilt/$hostTag"
 readelf="$toolchain/bin/llvm-readelf"
 strip="$toolchain/bin/llvm-strip"
-displayOpts=(--disable-gtk -Dgtk=disabled --enable-sdl -Dsdl=enabled -Dopengl=disabled)
+displayOpts=(-Dsdl=enabled -Dopengl=disabled)
 export AR="$toolchain/bin/llvm-ar"
 export CC="$toolchain/bin/${targetTriple}${apiLevel}-clang"
 export CFLAGS="-fPIC -Os -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-unwind-tables -fno-asynchronous-unwind-tables -fmerge-all-constants -mbranch-protection=none -ftls-model=global-dynamic -Wno-error -I$prefix/include -DSDL_MAIN_HANDLED -I$prefix/include/pixman-1 -DANDROID_PLATFORM=android-${apiLevel}"
@@ -51,8 +50,6 @@ export LD="$toolchain/bin/ld.lld"
 export LDFLAGS="-L$prefix/lib -Wl,--gc-sections -Wl,--icf=all -Wl,-s -lucontext"
 export NM="$toolchain/bin/llvm-nm"
 export OBJCOPY="$toolchain/bin/llvm-objcopy"
-export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
-export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
 export RANLIB="$toolchain/bin/llvm-ranlib"
 export STRIP="$toolchain/bin/llvm-strip"
 collectLib() {
@@ -200,6 +197,7 @@ EOF
 if [ -f "$libucontextH" ] && grep -Fq 'void (*)()' "$libucontextH"; then
   perl -0pi -e 's[void [(][*][)][(][)]][void (*)(void)]g' "$libucontextH"
 fi
+rm -rf "$outDir"
 mkdir -p "$outDir"
 mkdir -p "$prefix/lib" "$prefix/bin"
 {
@@ -282,7 +280,6 @@ if [ -d "$sdlSrc" ]; then
       { print }
     ' "$sdlSrc/CMakeLists.txt" > "$sdlSrc/CMakeLists.txt.tmp" && mv "$sdlSrc/CMakeLists.txt.tmp" "$sdlSrc/CMakeLists.txt"
   fi
-  sed -i 's/set(ANDROID_X11_LIBS X11 Xext xcb Xau Xdmcp Xrender X11-xcb)$/set(ANDROID_X11_LIBS X11 Xext xcb Xau Xdmcp Xrender X11-xcb android-shmem)/' "$sdlSrc/CMakeLists.txt"
 fi
 rm -rf "$sdlSrc/build-android"
 rm -f "$prefix/lib/libSDL2.so" "$prefix/lib/pkgconfig/sdl2.pc"
@@ -293,7 +290,7 @@ make -j "$nCpu" install
 popd
 if pkg-config --exists pixman-1; then pixmanOpt="--enable-pixman"; else pixmanOpt="--disable-pixman"; fi
 cd "$outDir"
-"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=[] --enable-slirp --disable-vhost-user --disable-virtfs --disable-tcg --disable-pie -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dvfio_user_server=disabled -Dreplication=disabled -Dbochs=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled -Dhv_balloon=disabled -Dlibvduse=disabled -Dvduse_blk_export=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
+"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=[] --enable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dvfio_user_server=disabled -Dreplication=disabled -Dbochs=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled -Dhv_balloon=disabled -Dlibvduse=disabled -Dvduse_blk_export=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
 meson="$outDir/pyvenv/bin/meson"
 if [ ! -x "$meson" ]; then meson="$(command -v meson)"; fi
 if [ -f "$slirpPatch" ]; then
