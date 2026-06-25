@@ -290,7 +290,7 @@ make -j "$nCpu" install
 popd
 if pkg-config --exists pixman-1; then pixmanOpt="--enable-pixman"; else pixmanOpt="--disable-pixman"; fi
 cd "$outDir"
-"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=aaudio --enable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dvfio_user_server=disabled -Dreplication=disabled -Dbochs=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled -Dhv_balloon=disabled -Dlibvduse=disabled -Dvduse_blk_export=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
+"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=aaudio --enable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtools=disabled -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dreplication=disabled -Dbochs=disabled -Dcloop=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
 meson="$outDir/pyvenv/bin/meson"
 if [ ! -x "$meson" ]; then meson="$(command -v meson)"; fi
 if [ -f "$slirpPatch" ]; then
@@ -298,10 +298,9 @@ if [ -f "$slirpPatch" ]; then
     git -C "$qvmSrc/subprojects/slirp" apply "$slirpPatch"
   fi
 fi
-"$meson" compile -C "$outDir" qemu-system-aarch64 qemu-img -j "$nCpu"
+"$meson" compile -C "$outDir" qemu-system-aarch64 -j "$nCpu"
 mkdir -p "$prefix/bin" "$prefix/share/qemu/keymaps"
 cp -f "$outDir/qemu-system-aarch64" "$prefix/bin/qemu-system-aarch64"
-cp -f "$outDir/qemu-img" "$prefix/bin/qemu-img"
 if [ -f "$outDir/subprojects/slirp/libslirp.so.0.4.0" ]; then
   cp -Lf "$outDir/subprojects/slirp/libslirp.so.0.4.0" "$prefix/lib/libslirp.so.0.4.0"
   ln -sf libslirp.so.0.4.0 "$prefix/lib/libslirp.so.0"
@@ -313,9 +312,8 @@ cd "$scriptDir"
 rm -rf "$qvmDir"
 mkdir -p "$qvmLib"
 [ -f "$sysBin/qemu-system-aarch64" ] && $strip --strip-all "$sysBin/qemu-system-aarch64" -o "$qvmDir/qemu-system-aarch64"
-[ -f "$sysBin/qemu-img" ] && $strip --strip-all "$sysBin/qemu-img" -o "$qvmDir/qemu-img"
-patchelf --set-rpath '$ORIGIN/lib' "$qvmDir/qemu-system-aarch64" "$qvmDir/qemu-img" || true
-collectLib "$qvmDir/qemu-system-aarch64" "$qvmDir/qemu-img"
+patchelf --set-rpath '$ORIGIN/lib' "$qvmDir/qemu-system-aarch64" || true
+collectLib "$qvmDir/qemu-system-aarch64"
 x11Tmp "$qvmLib/libxcb.so" "$qvmLib/libX11.so"
 if [ -d "$fwSrc" ]; then
   mkdir -p "$qvmFw/keymaps"
