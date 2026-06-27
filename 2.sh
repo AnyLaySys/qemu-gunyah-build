@@ -23,6 +23,7 @@ sdlConfigH="$buildDir/src/SDL2/include/SDL_config_android.h"
 sdlSrc="$buildDir/src/SDL2"
 sdlXinput2H="$buildDir/src/SDL2/src/video/x11/SDL_x11xinput2.h"
 slirpPatch="$scriptDir/patch/slirp.patch"
+x11DirSrc="$scriptDir/patch/x11-dir.c"
 sysBin="$prefix/bin"
 sysLib="$prefix/lib"
 targetTriple=aarch64-linux-android
@@ -88,21 +89,24 @@ copyLib() {
     pendingElfs+=("$destPath")
   fi
 }
-x11Tmp() {
+buildX11PathShim() {
+  "$CC" -shared -fPIC -Os -Wl,--gc-sections -Wl,-s \
+    -o "$prefix/lib/libX11-dir.so" "$x11DirSrc" -ldl
+}
+x11SocketPlaceholders() {
   local file
+  local x11From
+  local ximFrom
+  x11From="$(printf '/data/data/com.termux/files/usr/tmp/%s' '.X11-unix/X')"
+  ximFrom="$(printf '/data/data/com.termux/files/usr/tmp/%s' '.XIM-unix/XIM')"
   for file in "$@"; do
     [ -f "$file" ] || continue
-    perl -0pi -e '
+    X11_FROM="$x11From" XIM_FROM="$ximFrom" perl -0pi -e '
       sub fit { $_[1] . "\0" x (length($_[0]) - length($_[1])) }
-      for $p (
-        ["/data/data/com.termux/files/usr/tmp/.X11-unix/X", "/data/local/tmp/als/x11/tmp/.X11-unix/X"],
-        ["/data/data/com.termux/files/usr/tmp/.XIM-unix/XIM", "/data/local/tmp/als/x11/tmp/.XIM-unix/XIM"],
-      ) {
-        s/\Q$p->[0]\E/fit($p->[0], $p->[1])/eg;
-      }
-      for $s (".X11-unix/X", ".XIM-unix/XIM") {
-        s{\Q/data/local/tmp/als/x11/tmp\E/+(\Q$s\E)}{fit($&, "/data/local/tmp/als/x11/tmp/$1")}eg;
-      }
+      my $x11_to = "X11_TMPDIR_PLACEHOLDER/.X11-unix/X";
+      my $xim_to = "X11_TMPDIR_PLACEHOLDER/.XIM-unix/XIM";
+      s/\Q$ENV{X11_FROM}\E/fit($ENV{X11_FROM}, $x11_to)/eg;
+      s/\Q$ENV{XIM_FROM}\E/fit($ENV{XIM_FROM}, $xim_to)/eg;
     ' "$file"
   done
 }
@@ -208,6 +212,10 @@ mkdir -p "$prefix/lib" "$prefix/bin"
 } > "$wrapPc"
 chmod +x "$wrapPc"
 export PKG_CONFIG="$wrapPc"
+staleAlsRoot="$(printf '/data/local/tmp/%s' 'als')"
+if grep -a -q "$staleAlsRoot" "$prefix/lib/libX11.so" "$prefix/lib/libxcb.so" 2>/dev/null; then
+  rm -f "$prefix/lib"/libX11.so* "$prefix/lib"/libxcb.so*
+fi
 if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" ]; then
   mkdir -p "$buildDir/x11_tmp" && pushd "$buildDir/x11_tmp"
   fetchDeb "libandroid-shmem" "liba/libandroid-shmem"
@@ -237,10 +245,10 @@ if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" 
     [ -d "$d/lib" ] && cp -rf "$d/lib/"* "$prefix/lib/"
   done
   find "$prefix/lib/pkgconfig" -name "*.pc" -type f -exec sed -i "s|/data/data/com.termux/files/usr|$prefix|g" {} +
-  x11Tmp "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
   popd && rm -rf "$buildDir/x11_tmp"
 fi
-x11Tmp "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
+x11SocketPlaceholders "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
+buildX11PathShim
 if [ ! -d "$sdlSrc" ]; then
   $gitClone --branch SDL2 https://github.com/libsdl-org/SDL.git "$sdlSrc"
 fi
@@ -314,7 +322,8 @@ mkdir -p "$qvmLib"
 [ -f "$sysBin/qemu-system-aarch64" ] && $strip --strip-all "$sysBin/qemu-system-aarch64" -o "$qvmDir/qemu-system-aarch64"
 patchelf --set-rpath '$ORIGIN/lib' "$qvmDir/qemu-system-aarch64" || true
 collectLib "$qvmDir/qemu-system-aarch64"
-x11Tmp "$qvmLib/libxcb.so" "$qvmLib/libX11.so"
+x11SocketPlaceholders "$qvmLib/libxcb.so" "$qvmLib/libX11.so"
+cp -f "$prefix/lib/libX11-dir.so" "$qvmLib/"
 if [ -d "$fwSrc" ]; then
   mkdir -p "$qvmFw/keymaps"
   [ -f "$fwSrc/efi-virtio.rom" ] && cp -a "$fwSrc/efi-virtio.rom" "$qvmFw/"
