@@ -22,7 +22,6 @@ scriptDir="$(cd "$(dirname "$0")" && pwd)"
 sdlConfigH="$buildDir/src/SDL2/include/SDL_config_android.h"
 sdlSrc="$buildDir/src/SDL2"
 sdlXinput2H="$buildDir/src/SDL2/src/video/x11/SDL_x11xinput2.h"
-slirpPatch="$scriptDir/patch/slirp.patch"
 x11DirSrc="$scriptDir/patch/x11-dir.c"
 sysBin="$prefix/bin"
 sysLib="$prefix/lib"
@@ -213,7 +212,7 @@ mkdir -p "$prefix/lib" "$prefix/bin"
 chmod +x "$wrapPc"
 export PKG_CONFIG="$wrapPc"
 staleAlsRoot="$(printf '/data/local/tmp/%s' 'als')"
-if grep -a -q "$staleAlsRoot" "$prefix/lib/libX11.so" "$prefix/lib/libxcb.so" 2>/dev/null; then
+if grep -a -q "$staleAlsRoot" "$prefix/lib/libX11.so" "$prefix/lib/libxcb.so"; then
   rm -f "$prefix/lib"/libX11.so* "$prefix/lib"/libxcb.so*
 fi
 if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" ]; then
@@ -298,22 +297,12 @@ make -j "$nCpu" install
 popd
 if pkg-config --exists pixman-1; then pixmanOpt="--enable-pixman"; else pixmanOpt="--disable-pixman"; fi
 cd "$outDir"
-"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=aaudio --enable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtools=disabled -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dreplication=disabled -Dbochs=disabled -Dcloop=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
+"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=aaudio --disable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtools=disabled -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dreplication=disabled -Dbochs=disabled -Dcloop=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
 meson="$outDir/pyvenv/bin/meson"
 if [ ! -x "$meson" ]; then meson="$(command -v meson)"; fi
-if [ -f "$slirpPatch" ]; then
-  if git -C "$qvmSrc/subprojects/slirp" apply --check "$slirpPatch" >/dev/null 2>&1; then
-    git -C "$qvmSrc/subprojects/slirp" apply "$slirpPatch"
-  fi
-fi
 "$meson" compile -C "$outDir" qemu-system-aarch64 -j "$nCpu"
 mkdir -p "$prefix/bin" "$prefix/share/qemu/keymaps"
 cp -f "$outDir/qemu-system-aarch64" "$prefix/bin/qemu-system-aarch64"
-if [ -f "$outDir/subprojects/slirp/libslirp.so.0.4.0" ]; then
-  cp -Lf "$outDir/subprojects/slirp/libslirp.so.0.4.0" "$prefix/lib/libslirp.so.0.4.0"
-  ln -sf libslirp.so.0.4.0 "$prefix/lib/libslirp.so.0"
-  ln -sf libslirp.so.0 "$prefix/lib/libslirp.so"
-fi
 [ -f "$qvmSrc/pc-bios/efi-virtio.rom" ] && cp -f "$qvmSrc/pc-bios/efi-virtio.rom" "$prefix/share/qemu/efi-virtio.rom"
 [ -f "$qvmSrc/pc-bios/keymaps/en-us" ] && cp -f "$qvmSrc/pc-bios/keymaps/en-us" "$prefix/share/qemu/keymaps/en-us"
 cd "$scriptDir"
