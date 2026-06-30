@@ -6,9 +6,13 @@ bitsInstalled="$buildDir/sysroot/include/libucontext/bits.h"
 fwSrc="$buildDir/sysroot/share/qemu"
 gitClone="git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs $(nproc)"
 hostOs=$(uname -s | tr '[:upper:]' '[:lower:]')
+epoxyGitUrl="https://github.com/anholt/libepoxy.git"
+epoxySrc="$buildDir/src/libepoxy"
 libucontextGitUrl="https://github.com/kaniini/libucontext.git"
 libucontextH="$buildDir/sysroot/include/libucontext/libucontext.h"
 libucontextSrc="$buildDir/libucontext"
+liburingGitUrl="https://github.com/axboe/liburing.git"
+liburingSrc="$buildDir/liburing"
 nCpu="$(nproc || sysctl -n hw.ncpu)"
 ndkPath="$HOME/android-ndk-r30-beta1"
 outDir="$buildDir/out/qemu"
@@ -22,11 +26,14 @@ scriptDir="$(cd "$(dirname "$0")" && pwd)"
 sdlConfigH="$buildDir/src/SDL2/include/SDL_config_android.h"
 sdlSrc="$buildDir/src/SDL2"
 sdlXinput2H="$buildDir/src/SDL2/src/video/x11/SDL_x11xinput2.h"
+virglGitUrl="https://gitlab.freedesktop.org/virgl/virglrenderer.git"
+virglSrc="$buildDir/src/virglrenderer"
 x11DirSrc="$scriptDir/patch/x11-dir.c"
 sysBin="$prefix/bin"
 sysLib="$prefix/lib"
 targetTriple=aarch64-linux-android
-termuxPkg="https://packages.termux.dev/apt/termux-main/pool/main"
+termuxRepo="https://packages.termux.dev/apt/termux-main"
+termuxPackages="$buildDir/termux-Packages"
 wrapPc="$outDir/android-pkg-config"
 case "$hostOs" in
   darwin) hostTag="darwin-x86_64" ;;
@@ -40,7 +47,7 @@ fi
 toolchain="$ndkPath/toolchains/llvm/prebuilt/$hostTag"
 readelf="$toolchain/bin/llvm-readelf"
 strip="$toolchain/bin/llvm-strip"
-displayOpts=(-Dsdl=enabled -Dopengl=disabled)
+displayOpts=(-Dsdl=enabled -Dopengl=enabled)
 export AR="$toolchain/bin/llvm-ar"
 export CC="$toolchain/bin/${targetTriple}${apiLevel}-clang"
 export CFLAGS="-fPIC -Os -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-unwind-tables -fno-asynchronous-unwind-tables -fmerge-all-constants -mbranch-protection=none -ftls-model=global-dynamic -Wno-error -I$prefix/include -DSDL_MAIN_HANDLED -I$prefix/include/pixman-1 -DANDROID_PLATFORM=android-${apiLevel}"
@@ -92,6 +99,29 @@ buildX11PathShim() {
   "$CC" -shared -fPIC -Os -Wl,--gc-sections -Wl,-s \
     -o "$prefix/lib/libX11-dir.so" "$x11DirSrc" -ldl
 }
+writeMesonCross() {
+  local file=$1
+  local extraC=${2:-}
+  local extraLink=${3:-}
+  cat > "$file" <<EOF
+[binaries]
+c = '$CC'
+cpp = '$CXX'
+ar = '$AR'
+strip = '$STRIP'
+pkg-config = '$PKG_CONFIG'
+[built-in options]
+c_args = ['-fPIC','-Os','-ffunction-sections','-fdata-sections','-fomit-frame-pointer','-ftls-model=global-dynamic','-Wno-error','-I$prefix/include'$extraC]
+cpp_args = ['-fPIC','-Os','-ffunction-sections','-fdata-sections','-fomit-frame-pointer','-ftls-model=global-dynamic','-Wno-error','-I$prefix/include'$extraC]
+c_link_args = ['-L$prefix/lib','-Wl,--gc-sections','-Wl,--icf=all','-Wl,-s'$extraLink]
+cpp_link_args = ['-L$prefix/lib','-Wl,--gc-sections','-Wl,--icf=all','-Wl,-s'$extraLink]
+[host_machine]
+system = 'linux'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+EOF
+}
 x11SocketPlaceholders() {
   local file
   local x11From
@@ -112,15 +142,28 @@ x11SocketPlaceholders() {
 fetchDeb() {
   local debName
   local packageName=$1
-  local packageUrl
-  local subPath=$2
-  packageUrl="${termuxPkg}/${subPath}/"
-  debName=$(curl -sL -A "Mozilla/5.0" "$packageUrl" | grep -oE "${packageName}_[^_]+_aarch64[.]deb" | sort -V | tail -n1 || true)
-  if [ -z "$debName" ]; then
-    debName=$(curl -sL -A "Mozilla/5.0" "$packageUrl" | grep -oE "${packageName}_[^_]+_all[.]deb" | sort -V | tail -n1 || true)
+  local packagePath
+  if [ ! -s "$termuxPackages" ]; then
+    curl -L --fail --retry 3 -o "$termuxPackages" "$termuxRepo/dists/stable/main/binary-aarch64/Packages"
   fi
-  if [ -n "$debName" ]; then
-    wget -q -c "${packageUrl}${debName}"
+  packagePath=$(awk -v p="$packageName" '
+    BEGIN { RS=""; FS="\n" }
+    {
+      name = file = arch = ""
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^Package: /) name = substr($i, 10)
+        if ($i ~ /^Architecture: /) arch = substr($i, 15)
+        if ($i ~ /^Filename: /) file = substr($i, 11)
+      }
+      if (name == p && (arch == "aarch64" || arch == "all")) print file
+    }' "$termuxPackages" | tail -n1)
+  if [ -z "$packagePath" ]; then
+    echo "缺少 Termux 包: $packageName" >&2
+    return 1
+  fi
+  debName="$(basename "$packagePath")"
+  if [ ! -f "$debName" ]; then
+    curl -L --fail --retry 3 -C - -o "$debName" "$termuxRepo/$packagePath"
   fi
 }
 findLib() {
@@ -142,7 +185,7 @@ findLib() {
 }
 isSystemLib() {
   case "$1" in
-    libc.so|libm.so|libdl.so|liblog.so|libz.so|libandroid.so|libaaudio.so|libOpenSLES.so|libEGL.so|libGLESv2.so) return 0 ;;
+    libc.so|libm.so|libdl.so|liblog.so|libz.so|libandroid.so|libaaudio.so|libOpenSLES.so) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -161,6 +204,18 @@ if [ ! -f "$prefix/lib/libucontext.a" ]; then
   cp -f libucontext.a "$prefix/lib/"
   cp -f libucontext.pc "$prefix/lib/pkgconfig/"
   cp -f include/libucontext/libucontext.h "$prefix/include/libucontext/"
+  popd
+fi
+if [ ! -d "$liburingSrc" ]; then
+  git clone --depth 1 --branch liburing-2.8 "$liburingGitUrl" "$liburingSrc"
+fi
+if [ ! -f "$prefix/lib/liburing.a" ] || [ ! -f "$prefix/lib/pkgconfig/liburing.pc" ]; then
+  pushd "$liburingSrc"
+  make clean || true
+  ./configure --prefix="$prefix" --cc="$CC" --cxx="$CXX"
+  make library ENABLE_SHARED=0 -j "$nCpu"
+  make install ENABLE_SHARED=0
+  rm -f "$prefix/lib"/liburing.so* "$prefix/lib"/liburing-ffi.so*
   popd
 fi
 mkdir -p "$prefix/include/libucontext"
@@ -215,8 +270,9 @@ staleAlsRoot="$(printf '/data/local/tmp/%s' 'als')"
 if grep -a -q "$staleAlsRoot" "$prefix/lib/libX11.so" "$prefix/lib/libxcb.so"; then
   rm -f "$prefix/lib"/libX11.so* "$prefix/lib"/libxcb.so*
 fi
-if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" ]; then
+if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" ] || [ ! -f "$prefix/lib/libEGL_angle.so" ]; then
   mkdir -p "$buildDir/x11_tmp" && pushd "$buildDir/x11_tmp"
+  fetchDeb "angle-android" "a/angle-android"
   fetchDeb "libandroid-shmem" "liba/libandroid-shmem"
   fetchDeb "libx11" "libx/libx11"
   fetchDeb "libxau" "libx/libxau"
@@ -243,17 +299,86 @@ if [ ! -f "$prefix/lib/libX11.so" ] || [ ! -f "$prefix/lib/libandroid-shmem.so" 
     [ -d "$d/include" ] && cp -rf "$d/include/"* "$prefix/include/"
     [ -d "$d/lib" ] && cp -rf "$d/lib/"* "$prefix/lib/"
   done
+  if [ -d "data/data/com.termux/files/usr/opt/angle-android/vulkan" ]; then
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libEGL_angle.so "$prefix/lib/libEGL.so"
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libEGL_angle.so "$prefix/lib/libEGL_angle.so"
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libGLESv1_CM_angle.so "$prefix/lib/libGLESv1_CM.so"
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libGLESv2_angle.so "$prefix/lib/libGLESv2.so"
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libGLESv1_CM_angle.so "$prefix/lib/libGLESv1_CM_angle.so"
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libGLESv2_angle.so "$prefix/lib/libGLESv2_angle.so"
+    cp -Lf data/data/com.termux/files/usr/opt/angle-android/vulkan/libfeature_support_angle.so "$prefix/lib/"
+  fi
   find "$prefix/lib/pkgconfig" -name "*.pc" -type f -exec sed -i "s|/data/data/com.termux/files/usr|$prefix|g" {} +
   popd && rm -rf "$buildDir/x11_tmp"
 fi
 x11SocketPlaceholders "$prefix/lib/libxcb.so" "$prefix/lib/libX11.so"
 buildX11PathShim
+if [ ! -f "$prefix/lib/pkgconfig/epoxy.pc" ] || [ ! -f "$prefix/lib/libepoxy.so.0.0.0" ]; then
+  if [ ! -d "$epoxySrc" ]; then
+    git clone --depth 1 "$epoxyGitUrl" "$epoxySrc"
+  fi
+  writeMesonCross "$outDir/epoxy.cross"
+  rm -rf "$outDir/epoxy"
+  meson setup "$outDir/epoxy" "$epoxySrc" --cross-file "$outDir/epoxy.cross" --prefix "$prefix" -Ddefault_library=shared -Degl=yes -Dglx=no -Dx11=false -Dtests=false
+  meson compile -C "$outDir/epoxy" -j "$nCpu"
+  meson install -C "$outDir/epoxy"
+fi
+if [ ! -f "$prefix/lib/pkgconfig/virglrenderer.pc" ] || ! ls "$prefix/lib"/libvirglrenderer.so* >/dev/null 2>&1; then
+  if [ ! -d "$virglSrc" ]; then
+    git clone --depth 1 "$virglGitUrl" "$virglSrc"
+  fi
+  virglRendererC="$virglSrc/src/vrend/vrend_renderer.c"
+  if ! grep -Fq 'clear_feature(feat_dual_src_blend);' "$virglRendererC"; then
+    perl -0pi -e 's/(init_features\(gles \? 0 : gl_ver,\s*\n\s*gles \? gl_ver : 0\);\n)/$1   if (gles)\n      clear_feature(feat_dual_src_blend);\n/s' "$virglRendererC"
+  fi
+  perl -0pi -e 's/\n\s*caps->v2\.capability_bits \|= VIRGL_CAP_TRANSFER;\n/\n/s; s/\n\s*caps->v2\.capability_bits \|= VIRGL_CAP_COPY_TRANSFER;\n/\n/s; s/\n\s*caps->v2\.capability_bits_v2 \|= VIRGL_CAP_V2_COPY_TRANSFER_BOTH_DIRECTIONS;\n/\n/s' "$virglRendererC"
+  virglDecodeC="$virglSrc/src/vrend/vrend_decode.c"
+  perl -0pi -e 's/(static int vrend_unsupported\([^{}]*\)\s*\{\s*\(void\)ctx;\s*\(void\)buf;\s*\(void\)length;\s*return )EINVAL(;)/${1}0$2/s' "$virglDecodeC"
+  compatDir="$prefix/include/compat"
+  mkdir -p "$compatDir/log" "$compatDir/cutils"
+  cat > "$compatDir/log/log.h" <<'EOF'
+#ifndef _COMPAT_LOG_LOG_H
+#define _COMPAT_LOG_LOG_H
+#include <android/log.h>
+#ifndef LOG_PRI
+#define LOG_PRI(priority, tag, ...) __android_log_print(priority, tag, __VA_ARGS__)
+#endif
+#endif
+EOF
+  cat > "$compatDir/cutils/properties.h" <<'EOF'
+#ifndef _COMPAT_CUTILS_PROPERTIES_H
+#define _COMPAT_CUTILS_PROPERTIES_H
+#include <string.h>
+#ifndef PROPERTY_VALUE_MAX
+#define PROPERTY_VALUE_MAX 92
+#endif
+#ifndef PROPERTY_KEY_MAX
+#define PROPERTY_KEY_MAX 32
+#endif
+static inline int property_get(const char *key, char *value, const char *def) {
+    (void)key;
+    if (def) {
+        strncpy(value, def, PROPERTY_VALUE_MAX - 1);
+        value[PROPERTY_VALUE_MAX - 1] = 0;
+        return strlen(value);
+    }
+    *value = 0;
+    return 0;
+}
+#endif
+EOF
+  writeMesonCross "$outDir/virgl.cross" ",'-I$compatDir'" ",'-llog'"
+  rm -rf "$outDir/virglrenderer"
+  meson setup "$outDir/virglrenderer" "$virglSrc" --cross-file "$outDir/virgl.cross" --prefix "$prefix" -Ddefault_library=shared -Dtests=false -Dcheck-gl-errors=false
+  meson compile -C "$outDir/virglrenderer" -j "$nCpu"
+  meson install -C "$outDir/virglrenderer"
+fi
 if [ ! -d "$sdlSrc" ]; then
   $gitClone --branch SDL2 https://github.com/libsdl-org/SDL.git "$sdlSrc"
 fi
 if [ -d "$sdlSrc" ]; then
   if git -C "$sdlSrc" rev-parse --is-inside-work-tree; then
-    git -C "$sdlSrc" checkout -- CMakeLists.txt include/SDL_config_android.h src/SDL.c src/video/x11/SDL_x11xinput2.h
+    git -C "$sdlSrc" checkout -- CMakeLists.txt include/SDL_config_android.h src/SDL.c src/video/x11/SDL_x11opengles.c src/video/x11/SDL_x11xinput2.h
   fi
   if [ -f "$sdlConfigH" ]; then
     sed -i '/SDL_VIDEO_DRIVER_X11/d;/SDL_VIDEO_DRIVER_ANDROID/d' "$sdlConfigH"
@@ -292,12 +417,12 @@ rm -rf "$sdlSrc/build-android"
 rm -f "$prefix/lib/libSDL2.so" "$prefix/lib/pkgconfig/sdl2.pc"
 mkdir -p "$sdlSrc/build-android"
 pushd "$sdlSrc/build-android"
-cmake .. -DCMAKE_TOOLCHAIN_FILE="$ndkPath/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$apiLevel -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_FIND_ROOT_PATH="$prefix" -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_INCLUDE_PATH="$prefix/include" -DCMAKE_LIBRARY_PATH="$prefix/lib" -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CPPFLAGS" -DCMAKE_SHARED_LINKER_FLAGS="-L$prefix/lib -landroid-shmem" -DCMAKE_EXE_LINKER_FLAGS="-L$prefix/lib -landroid-shmem" -DCMAKE_VERBOSE_MAKEFILE=ON -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_X11=OFF -DSDL_X11_SHARED=OFF -DSDL_VULKAN=OFF -DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF -DSDL_ANDROID=ON -DHAVE_X11_XLIB_H=1 -DX11_X11_LIB="$prefix/lib/libX11.so" -DX11_Xext_LIB="$prefix/lib/libXext.so" -DX11_Xrender_LIB="$prefix/lib/libXrender.so"
+cmake .. -DCMAKE_TOOLCHAIN_FILE="$ndkPath/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$apiLevel -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_FIND_ROOT_PATH="$prefix" -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_INCLUDE_PATH="$prefix/include" -DCMAKE_LIBRARY_PATH="$prefix/lib" -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CPPFLAGS" -DCMAKE_SHARED_LINKER_FLAGS="-L$prefix/lib -landroid-shmem" -DCMAKE_EXE_LINKER_FLAGS="-L$prefix/lib -landroid-shmem" -DCMAKE_VERBOSE_MAKEFILE=ON -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_RENDER=ON -DSDL_X11=OFF -DSDL_X11_SHARED=OFF -DSDL_VULKAN=OFF -DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF -DSDL_ANDROID=ON -DHAVE_X11_XLIB_H=1 -DX11_X11_LIB="$prefix/lib/libX11.so" -DX11_Xext_LIB="$prefix/lib/libXext.so" -DX11_Xrender_LIB="$prefix/lib/libXrender.so"
 make -j "$nCpu" install
 popd
 if pkg-config --exists pixman-1; then pixmanOpt="--enable-pixman"; else pixmanOpt="--disable-pixman"; fi
 cd "$outDir"
-"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=aaudio --disable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtools=disabled -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=disabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dreplication=disabled -Dbochs=disabled -Dcloop=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
+"$qvmSrc/configure" --prefix="$prefix" --host-cc="$hostCC" --cross-prefix="${targetTriple}-" --cc="$CC" --cxx="$CXX" --extra-cflags="$CFLAGS" --extra-ldflags="$LDFLAGS -lX11 -lXext -lxcb -lXau -lXdmcp -lXrender -lX11-xcb -landroid-shmem -lEGL -lGLESv2" --with-coroutine=ucontext --disable-docs --disable-guest-agent --disable-cocoa --disable-curses --disable-capstone --disable-gnutls --disable-gcrypt --disable-plugins --disable-libusb --disable-usb-redir --disable-tpm --disable-vhost-kernel --disable-vhost-net --disable-vhost-vdpa --audio-drv-list=aaudio --disable-slirp --disable-vhost-user --disable-virtfs --disable-pie -Dtools=disabled -Dtcg=disabled -Dcoroutine_pool=false -Dvirglrenderer=enabled -Ddbus_display=disabled -Dgunyah=enabled -Dcoroutine_backend=sigaltstack -Dlinux_io_uring=enabled -Dxen=disabled -Dxen_pci_passthrough=disabled -Dmultiprocess=disabled -Dreplication=disabled -Dbochs=disabled -Dcloop=disabled -Ddmg=disabled -Dqcow1=disabled -Dvdi=disabled -Dvhdx=disabled -Dvmdk=disabled -Dvpc=disabled -Dvvfat=disabled -Dqed=disabled -Dparallels=disabled -Dzstd=disabled -Dl2tpv3=disabled -Dattr=disabled "$pixmanOpt" "${displayOpts[@]}" --target-list="aarch64-softmmu"
 meson="$outDir/pyvenv/bin/meson"
 if [ ! -x "$meson" ]; then meson="$(command -v meson)"; fi
 "$meson" compile -C "$outDir" qemu-system-aarch64 -j "$nCpu"
@@ -311,6 +436,9 @@ mkdir -p "$qvmLib"
 [ -f "$sysBin/qemu-system-aarch64" ] && $strip --strip-all "$sysBin/qemu-system-aarch64" -o "$qvmDir/qemu-system-aarch64"
 patchelf --set-rpath '$ORIGIN/lib' "$qvmDir/qemu-system-aarch64" || true
 collectLib "$qvmDir/qemu-system-aarch64"
+for neededName in libEGL_angle.so libGLESv1_CM_angle.so libGLESv2_angle.so libfeature_support_angle.so; do
+  [ -f "$sysLib/$neededName" ] && cp -Lf "$sysLib/$neededName" "$qvmLib/"
+done
 x11SocketPlaceholders "$qvmLib/libxcb.so" "$qvmLib/libX11.so"
 cp -f "$prefix/lib/libX11-dir.so" "$qvmLib/"
 if [ -d "$fwSrc" ]; then
